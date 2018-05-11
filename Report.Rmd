@@ -326,10 +326,13 @@ accuracy <- c(0,0,0,0,0)
     down_train$ActiveNumeric <- (down_train$Active == FALSE)*1
     test$ActiveNumeric <- (test$Active == FALSE)*1
     
-    glm_all_reduced <- glm(ActiveNumeric ~ AverageAssists+ AverageDuration + log(NumberOfGame) + log(GameFrequency) + GameHistory +  HeroSelectionDiversity + STDKills + STDAssists + LWZKills + LWZAssists + LMZAssists + DiffLMGameFrequency, data = down_train, family = binomial(link = "logit"))
+    glm_all_reduced <- glm(ActiveNumeric ~ AverageAssists+ AverageDuration + 
+    log(NumberOfGame) + log(GameFrequency) + GameHistory +  HeroSelectionDiversity + 
+    STDKills + STDAssists + LWZKills + LWZAssists + LMZAssists + DiffLMGameFrequency, 
+    data = down_train, family = binomial(link = "logit"))
     
-    valid_p1 <- predict(glm_all_reduced, type = "response", newdata = test)
-    y_pred <- ifelse(valid_p1 > 0.5, FALSE, TRUE)
+    valid_p <- predict(glm_all_reduced, type = "response", newdata = test)
+    y_pred <- ifelse(valid_p > 0.5, FALSE, TRUE)
     y_act <- test$Active
     accuracy[i] <- mean(y_pred == y_act)
  }
@@ -354,7 +357,10 @@ down_train$ActiveNumeric <- (down_train$Active == FALSE)*1
 
 test$ActiveNumeric <- (test$Active == FALSE)*1
 
-glm_all_reduced <- glm(ActiveNumeric ~ AverageAssists+ AverageDuration + log(NumberOfGame) + log(GameFrequency) + GameHistory +  HeroSelectionDiversity + STDKills + STDAssists + LWZKills + LWZAssists + LMZAssists + DiffLMGameFrequency, data = down_train, family = binomial(link = "logit"))
+glm_all_reduced <- glm(ActiveNumeric ~ AverageAssists+ AverageDuration +
+log(NumberOfGame) + log(GameFrequency) + GameHistory +  HeroSelectionDiversity + 
+STDKills + STDAssists + LWZKills + LWZAssists + LMZAssists + DiffLMGameFrequency, 
+data = down_train, family = binomial(link = "logit"))
     
     test_pred <- predict(glm_all_reduced, type = "response", newdata = test)
     y_pred <- ifelse(test_pred > 0.5, FALSE, TRUE)
@@ -395,6 +401,7 @@ In addition, there are for sure other factors that are missed from this data ana
 
 ## Reference
 
-[1] NBC News. https://www.nbcnews.com/tech/tech-news/league-legends-players-log-1-billion-hours-month-flna1C6423906
+[1] NBC News. https://www.nbcnews.com/tech/tech-news/league-legends-players-log-1-
+billion-hours-month-flna1C6423906
 
 [2] OpenDotA API Documentation https://docs.opendota.com/#
