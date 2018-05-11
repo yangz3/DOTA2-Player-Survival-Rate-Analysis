@@ -1,0 +1,376 @@
+---
+title: 'An Exploratory Study in Survival Rates of Online Game Players'
+author: "Yang Zhang"
+date: "May 10, 2018"
+output: pdf_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = T)
+rm(list = ls()) 
+library(knitr)
+library(car)
+require(dplyr)
+library(tibble)
+library(quantreg)
+library(AER)
+library(MASS)
+library(lmtest)
+library(sandwich)
+library(tidyr)
+library(ggplot2)
+library(mgcv)
+library(caret)
+library(imager)
+setwd("/Users/yangz3/Desktop/DOTA2-Player-Survival-Rate-Analysis/")
+
+
+```
+
+
+
+##Introduction
+
+With the advances in computer and internet, gaming online becomes a common part of everyday life. People play online games together with friends, or in most cases with strangers for entertainment. In fact, NBC News reported that there were mover 1 billion hours of League of Legends played in a month in 2012 [1]. That was only one game among many others with even more popularity. 
+
+As a result, we are interested in what makes people want to play the game. Or in other words, what makes a player decide to stay in community and keep playing. And what would make the player quit the game. One of the most intuitive approaches is to compare between games with different designs, and compare the user playing time. We can then investigate the effect of design factors and the interactions between them on a user’s playing time. However, this would require reliable and uniformed sources from multiple games, which is beyond our reach. Instead, we focus on one game – Defense of the Ancients (DotA) 2, and compare between players. Specifically, we want to investigate what happened in the games that made a DotA player decided to not play the game anymore. Equivalently, it will also inform us what will make a player keep playing the game. 
+
+##Data structure
+
+Our data comes from the OpenDotA website, where we can get access to over a million DotA players data ever since their first game. We downloaded 35352 players’ data (https://www.dropbox.com/s/cbraofsl18oavyr/download.tar.gz?dl=0). Each player has one json file which contains all games that player was ever involved. Each game has a data point in the json file, formatted as follows:
+
+```{r example, message = F, echo = F}
+
+im <- load.image("/Users/yangz3/Desktop/DOTA2-Player-Survival-Rate-Analysis/images/example.png")
+plot(im, axes = F)
+
+```
+
+
+Where we have the match id, the player’s side, game result, game duration, game mode, lobby type, hero id, game start time, version, number of kills, number of deaths, number of assists, skill, leaver status, and party size. A full document of these data can be found here [2].
+
+##Analysis plan
+
+To process the data, we first removed data from players who have played for shorter than two months. These players were often new to the game and thus were unstable and can be unpredictable when it comes to why they quitted the game. To better model the population, we removed data points from these players from the data set. 
+
+We then calculate the performance dependent variables – one set of variables for each player. Specifically, the performance dependent variables include average kills, average deaths, average assists, average game duration, average winning percentage, hero selection diversity (i.e., we counted the number of unrepeated heroes selected by that user), average game finish rate, game frequency (i.e., number of games per week), game history (i.e., total number of weeks playing DotA2), number of games (i.e., total number of games played), number of weeks not played since the last game.
+
+We also want to pay attention to that player’s last period of game play before she quitted the game. For example, we calculated Z-scores of performance characteristics (e.g., kills/deaths/assists) of the player against her average performance throughout her entire gaming history. We also calculated the average performance characteristics of the player’s last period of game play such as winning percentage, game finish rate, and game frequency. In our data processing, we defined the last week and the last month as the last period of game play. The above characteristics are calculated for the last week and the last month respectively.
+
+Table 1. shows all dependent variables we calculated:
+
+
+
+
+```{r data_process, message = F, echo = F}
+
+im <- load.image("/Users/yangz3/Desktop/DOTA2-Player-Survival-Rate-Analysis/images/table.png")
+plot(im, axes = F)
+
+playerData <- read.csv(file="./data/playerStats.csv", header=TRUE, sep=",")
+playerData = playerData[playerData$GameHistory < 1000, ]
+saveRDS(playerData, file="./data/playerData.rds")
+
+# load data
+playerData <- readRDS("./data/playerData.rds")
+
+# remove outliers who tried and quitted the game immediately 
+playerData = playerData[playerData$GameHistory > 2, ]
+
+playerData$Active <- playerData$NotPlaySinceLastGame < 48
+
+playerData$DiffLWWinningPercentage <- playerData$AverageWinningPercentage -playerData$LWWinningPercentage 
+
+playerData$DiffLMWinningPercentage <- playerData$AverageWinningPercentage -playerData$LMWinningPercentage
+
+playerData$DiffLWGameFrequency <- playerData$GameFrequency - playerData$LWGameFrequency
+
+playerData$DiffLMGameFrequency <- playerData$GameFrequency - playerData$LMGameFrequency
+
+playerData$DiffLWGameFinishRate <- playerData$GameFinishRate - playerData$LWGameFinishRate
+
+playerData$DiffLMGameFinishRate <- playerData$GameFinishRate - playerData$LMGameFinishRate
+
+# apply 20/60/20 rule
+splits <- rep(0:4, length.out = nrow(playerData))
+splits <- sample(splits)
+first_20 <- filter( playerData,splits == 0) 
+second_60 <- filter( playerData,splits != 0 & splits != 4)
+third_20 <- filter( playerData,splits ==4)
+
+```
+
+To tell the data summary story, we first plot histograms of the first 20% exploratory data. The histograms are plotted below.
+
+```{r summary1, message = F, echo = F}
+par(mfrow=c(2,2))
+
+# data summary using histograms
+hist(first_20$NumberOfGame,
+     xlab = "Total Number of Games",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+hist(first_20$GameFrequency,
+     xlab = "Number of Games per Week",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+
+hist(first_20$GameHistory,
+     xlab = "Number of Weeks for Total Dota Play",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+
+
+```
+
+We can see from these plots that the total number of games played by each player and the number of games per week are more like normal distributions however with only one tail on the right. The mojority of players play 0-3000 games in our samples, while most of the players play 3-15 games every week. This indicates a log transformation might be needed for these dependent variables. However, for the number of weeks for the total DotA play, we did not see a normal distribution. 
+
+
+```{r summary2, message = F, echo = F}
+par(mfrow=c(2,2))
+
+hist(first_20$GameFinishRate,
+     xlab = "Finish Rate",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+hist(first_20$HeroSelectionDiversity,
+     xlab = "Hero Selection Diversity",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+hist(first_20$AverageWinningPercentage,
+     xlab = "Average Winning Percentage",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+hist(first_20$AverageDuration,
+     xlab = "Average Duration",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+```
+
+From the above histograms we can see clearly a normal distribution for the average winning percentage and average duration. In fact, the DotA2 platform automatically adjust the game difficulty for a player through e.g., matching the player with opponents with different levels to control the winning percentage to be 50%. The finish rate and the hero selection diversity have also normal distributions but the right tails are limited by the upper boundary. As we can see that most of the players have a game finish rate between 85% to 100%. And most of the players have used more than 100 heros during her game play history.
+
+
+```{r summary3, message = F, echo = F}
+par(mfrow=c(2,2))
+
+hist(first_20$AverageAssists,
+     xlab = "Average Number of Assists",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+hist(first_20$AverageDeaths,
+     xlab = "Average Number of Deaths",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+hist(first_20$AverageKills,
+     xlab = "Average Number of Kills",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+
+hist(first_20$NotPlaySinceLastGame,
+     xlab = "Number of Weeks Not Played Since Last Play",
+     breaks = "FD",
+     main = "",
+     col = "grey")
+```
+
+From the above plots we can clearly see normal distributions of game performance including average number of assists, deaths and kills. Most players have average number of assists ranging from 10-15, while 6-10 for deaths, and roughly the same for kills.
+
+Since most of the player are still active in the game, so we see most players have not played for less than 5 weeks. We set a threshold to 48 weeks (i.e., 4 months). If a player has not played for longer than 4 months, she is counted as an inactive player. This threshold is selected based on experience, for e.g., an international travel or an internship might be roughly 3 months where a player might not be able to play during that period, but able to after. Inevitably, we have an imbalanced data set. We counted the number of active players and the number of inactive players in the exploritory data set and the result is shown in the following table:
+
+```{r summary4, message = F, echo = F}
+par(mfrow=c(1,2))
+
+# the frequencies of active and quitted player
+stillPlay <- first_20[first_20$Active == TRUE,]
+stats <- c(nrow(stillPlay), nrow(first_20) - nrow(stillPlay))
+stats <- rbind(c("no", "yes"),stats)
+t <- as.data.frame(t(stats))
+colnames(t) <- c("Quitted?","Frequency")
+kable(t)
+
+
+set.seed(100)
+
+down_train <- downSample(x = first_20[, colnames(first_20)],
+                         y = factor(first_20$Active))
+
+stillPlay <- down_train[down_train$Active == TRUE,]
+stats <- c(nrow(stillPlay), nrow(down_train) - nrow(stillPlay))
+stats <- rbind(c("no", "yes"),stats)
+t <- as.data.frame(t(stats))
+colnames(t) <- c("Quitted?","Frequency")
+#kable(t)
+
+```
+
+To avoid having an imbalanced data set, we randomly downsampled the active player to match the number of the inactive players and move on to the next stage.
+
+The most intuitive model is merely using winning percentage as the independent variable. A player might lose interests in the game simply because she lost to many games, which can be reflected in the winning percentage. So we first build logistic regressions based on average winning percentation, last week winning percentage, last month winning percentage, and the difference between average and last week winning percentage, and the diifference between average and last month winning percentation. We set a threshold of 50% on the the probability outputted by the model to predict if a player is inactive. We calculate the prediction accuracies which are show in the table below: 
+
+
+```{r models, message = F, echo = F}
+
+down_train$ActiveNumeric <- (down_train$Active == FALSE)*1
+
+glm_onlyWinningRate <- glm(ActiveNumeric ~ AverageWinningPercentage, data = down_train, family = binomial(link = "logit")) 
+
+glm_onlyWinningRate2 <- glm(ActiveNumeric ~ down_train$LWWinningPercentage, data = down_train, family = binomial(link = "logit")) 
+
+glm_onlyWinningRate3 <- glm(ActiveNumeric ~ down_train$LMWinningPercentage, data = down_train, family = binomial(link = "logit")) 
+
+glm_onlyWinningRate4 <- glm(ActiveNumeric ~ down_train$DiffLWWinningPercentage, data = down_train, family = binomial(link = "logit")) 
+
+glm_onlyWinningRate5 <- glm(ActiveNumeric ~ down_train$DiffLMWinningPercentage, data = down_train, family = binomial(link = "logit")) 
+
+pred.prob1 <- predict(glm_onlyWinningRate, type = "response")
+y_pred1 <- ifelse(pred.prob1 > 0.5, FALSE, TRUE)
+y_act <- down_train$Active
+a1 <- mean(y_pred1 == y_act)
+
+pred.prob2 <- predict(glm_onlyWinningRate2, type = "response")
+y_pred2 <- ifelse(pred.prob2 > 0.5, FALSE, TRUE)
+a2 <- mean(y_pred2 == y_act)
+
+pred.prob3 <- predict(glm_onlyWinningRate3, type = "response")
+y_pred3 <- ifelse(pred.prob3 > 0.5, FALSE, TRUE)
+a3 <- mean(y_pred3 == y_act)
+
+pred.prob4 <- predict(glm_onlyWinningRate4, type = "response")
+y_pred4 <- ifelse(pred.prob4 > 0.5, FALSE, TRUE)
+a4 <- mean(y_pred4 == y_act)
+
+pred.prob5 <- predict(glm_onlyWinningRate5, type = "response")
+y_pred5 <- ifelse(pred.prob5 > 0.5, FALSE, TRUE)
+a5 <- mean(y_pred5 == y_act)
+
+
+modelstats <- data.frame(Model = c('average WP', 'last week WP', 'last month WP', 'average WP - last week WP', 'average WP - last month WP'), Accuracy = c(a1, a2, a3, a4, a5))
+
+kable(modelstats)
+
+```
+
+This result indicates that the winning percentage along cannot well predict if a user is likely to quit the game since the prediction accuracy is almost the same as prior possiblity (i.e. 50%). We then select more independent variables, build the following model and evaluate their accuracies. Specifically, we build logistic regression models based on 1) only last period statistics, 2) only all period statistics, 3) combined statistics (all statistics). The prediction performance is shown in the table below:
+
+```{r models2, message = F, echo = F}
+glm_all_diff <- glm(ActiveNumeric ~ LWZKills + LWZDeaths + LWZAssists + LWZDuration + LMZKills + LMZDeaths + LMZAssists + LMZDuration + DiffLWWinningPercentage + DiffLWWinningPercentage + DiffLWGameFrequency + DiffLMGameFrequency + DiffLWGameFinishRate + DiffLMGameFinishRate, data = down_train, family = binomial(link = "logit"))
+
+glm_all_average <- glm(ActiveNumeric ~ AverageKills + AverageDeaths + AverageAssists+ AverageDuration + AverageWinningPercentage + log(NumberOfGame) + log(GameFrequency) + GameHistory +  GameFinishRate + HeroSelectionDiversity + STDKills + STDAssists + STDDeaths + STDDuration, data = down_train, family = binomial(link = "logit"))
+
+glm_all <- glm(ActiveNumeric ~ AverageKills + AverageDeaths + AverageAssists+ AverageDuration + AverageWinningPercentage + log(NumberOfGame) + log(GameFrequency) + GameHistory +  GameFinishRate + HeroSelectionDiversity + STDKills + STDAssists + STDDeaths + STDDuration + LWZKills + LWZDeaths + LWZAssists + LWZDuration + LMZKills + LMZDeaths + LMZAssists + LMZDuration + DiffLWWinningPercentage + DiffLWWinningPercentage + DiffLWGameFrequency + DiffLMGameFrequency + DiffLWGameFinishRate + DiffLMGameFinishRate, data = down_train, family = binomial(link = "logit"))
+
+pred.prob6 <- predict(glm_all_diff, type = "response")
+y_pred6 <- ifelse(pred.prob6 > 0.5, FALSE, TRUE)
+a6 <- mean(y_pred6 == y_act)
+
+pred.prob7 <- predict(glm_all_average, type = "response")
+y_pred7 <- ifelse(pred.prob7 > 0.5, FALSE, TRUE)
+a7 <- mean(y_pred7 == y_act)
+
+pred.prob8 <- predict(glm_all, type = "response")
+y_pred8 <- ifelse(pred.prob8 > 0.5, FALSE, TRUE)
+a8 <- mean(y_pred8 == y_act)
+
+glm_all_reduced <- glm(ActiveNumeric ~ AverageAssists+ AverageDuration + log(NumberOfGame) + log(GameFrequency) + GameHistory +  HeroSelectionDiversity + STDKills + STDAssists + LWZKills + LWZAssists + LMZAssists + DiffLMGameFrequency, data = down_train, family = binomial(link = "logit"))
+
+pred.prob9 <- predict(glm_all_reduced, type = "response")
+y_pred9 <- ifelse(pred.prob9 > 0.5, FALSE, TRUE)
+a9 <- mean(y_pred9 == y_act)
+
+modelstats <- data.frame(Model = c('only last period stats', 'only all period stats', 'combined' , 'combined and reduced'), Accuracy = c(a6, a7, a8, a9))
+
+kable(modelstats)
+#summary(glm_all)
+```
+
+Since not all independent variables can explain the dependent variable well, we reduced the number of independent variables and selected the ones that are significant in the summary of the model using the combined all period stats and last period stats independent variable set. This model is shown as follows:
+
+$$ \\log{(\frac{p(x)}{1-p(x)})} =\beta_0 + (\beta_1 * AverageAssists)+(\beta_2 * AverageDuration) + (\beta_3 * log(NumberOfGame) +\\$$
+$$  (\beta_4 * log(GameFrequency))+ (\beta_5 * GameHistory) + (\beta_6 * HeroSelectionDiversity)+(\beta_7 * STDKills) + $$
+$$ (\beta_8 * STDAssists) + (\beta_9 * LWZKills)+(\beta_{10} * LWZAssists) + (\beta_{11} * LMZAssists) +  (\beta_{12} * DiffLMGameFrequency)$$
+
+We also run a predicion evaluation using the exploritary data and the result is shown in the above table. As we can see the prediction accuracy of this model is roughtly as good as the all combined model. So we selected this model to move on to the validation phase.
+
+```{r validation, message = F, echo = T}
+folds <- rep(1:5, length.out = nrow(second_60))
+set.seed <- 200
+folds <- sample(folds)
+accuracy <- c(0,0,0,0,0)
+
+ for(i in 1:5){
+    train <- filter(second_60, folds != i)
+    
+    down_train <- downSample(x = train[, colnames(train)],
+                         y = factor(train$Active))
+    
+    test <- filter(second_60, folds == i)
+    down_train$ActiveNumeric <- (down_train$Active == FALSE)*1
+    test$ActiveNumeric <- (test$Active == FALSE)*1
+    
+    glm_all_reduced <- glm(ActiveNumeric ~ AverageAssists+ AverageDuration + log(NumberOfGame) + log(GameFrequency) + GameHistory +  HeroSelectionDiversity + STDKills + STDAssists + LWZKills + LWZAssists + LMZAssists + DiffLMGameFrequency, data = down_train, family = binomial(link = "logit"))
+    
+    valid_p1 <- predict(glm_all_reduced, type = "response", newdata = test)
+    y_pred <- ifelse(valid_p1 > 0.5, FALSE, TRUE)
+    y_act <- test$Active
+    accuracy[i] <- mean(y_pred == y_act)
+ }
+
+  mean(accuracy)
+  sd(accuracy)
+
+```
+
+The 5-fold cross-validation shows an average predication accuracy of 0.858 with a standard deviation of 0.005. 
+
+Finally, we combine the exploritory and the validation dataset to train a final model, while using the rest 20% of all data points as the test set. The result is shown as follows.
+
+```{r test, message = F, echo = T}
+combined_80 <- rbind(first_20,second_60)
+
+down_train <- downSample(x = combined_80[, colnames(combined_80)],
+                         y = factor(combined_80$Active))
+test <- third_20
+
+down_train$ActiveNumeric <- (down_train$Active == FALSE)*1
+
+test$ActiveNumeric <- (test$Active == FALSE)*1
+
+glm_all_reduced <- glm(ActiveNumeric ~ AverageAssists+ AverageDuration + log(NumberOfGame) + log(GameFrequency) + GameHistory +  HeroSelectionDiversity + STDKills + STDAssists + LWZKills + LWZAssists + LMZAssists + DiffLMGameFrequency, data = down_train, family = binomial(link = "logit"))
+    
+    test_pred <- predict(glm_all_reduced, type = "response", newdata = test)
+    y_pred <- ifelse(test_pred > 0.5, FALSE, TRUE)
+    y_act <- test$Active
+    accuracy <- mean(y_pred == y_act)
+    
+    library(caret) 
+    library(e1071)
+    confusionMatrix(data=table(y_pred, y_act))
+
+```
+
+We achieved an accuracy of 0.816. We also calculated the confusion matrix and the result indicates an false positive rate of 0.213 where inactive players are predicted as active players. The false negative rate is 0.176 where active players are predicted as inactive players.
+
+## Reference
+
+[1] NBC News. https://www.nbcnews.com/tech/tech-news/league-legends-players-log-1-billion-hours-month-flna1C6423906
+
+[2] OpenDotA API Documentation https://docs.opendota.com/#
