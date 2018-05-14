@@ -28,6 +28,8 @@ setwd("/Users/yangz3/Desktop/DOTA2-Player-Survival-Rate-Analysis/")
 ```
 
 
+All code and the data used in this project can be found here: \
+https://github.com/yangz3/DOTA2-Player-Survival-Rate-Analysis
 
 ##Introduction
 
