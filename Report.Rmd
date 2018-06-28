@@ -33,7 +33,7 @@ https://github.com/yangz3/DOTA2-Player-Survival-Rate-Analysis
 
 ##Introduction
 
-With the advances in computer and internet, gaming online becomes a common part of everyday life. People play online games together with friends, or in most cases with strangers for entertainment. In fact, NBC News reported that there were mover 1 billion hours of League of Legends played in a month in 2012 [1]. That was only one game among many others with even more popularity. 
+With the advances in computer and Internet, gaming online becomes a common part of everyday life. People play online games together with friends, or in most cases with strangers for entertainment. In fact, NBC News reported that there were mover 1 billion hours of League of Legends played in a month in 2012 [1]. That was only one game among many others with even more popularity. 
 
 As a result, we are interested in what makes people want to play the game. Or in other words, what makes a player decide to stay in community and keep playing. And what would make the player quit the game. One of the most intuitive approaches is to compare between games with different designs, and compare the user playing time. We can then investigate the effect of design factors and the interactions between them on a user’s playing time. However, this would require reliable and uniformed sources from multiple games, which is beyond our reach. Instead, we focus on one game – Defense of the Ancients (DotA) 2, and compare between players. Specifically, we want to investigate what happened in the games that made a DotA player decided to not play the game anymore. Equivalently, it will also inform us what will make a player keep playing the game. 
 
@@ -196,7 +196,7 @@ hist(first_20$NotPlaySinceLastGame,
 
 From the above plots we can clearly see normal distributions of game performance including average number of assists, deaths and kills. Most players have average number of assists ranging from 10-15, while 6-10 for deaths, and roughly the same for kills.
 
-Since most of the player are still active in the game, so we see most players have not played for less than 5 weeks. We set a threshold to 48 weeks (i.e., 4 months). If a player has not played for longer than 4 months, she is counted as an inactive player. This threshold is selected based on experience, for e.g., an international travel or an internship might be roughly 3 months where a player might not be able to play during that period, but able to after. Inevitably, we have an imbalanced data set. We counted the number of active players and the number of inactive players in the exploratory data set and the result is shown in the following table:
+Since most of the players are still active in the game, so we see most players have not played for less than 5 weeks. We set a threshold to 48 weeks (i.e., 4 months). If a player has not played for longer than 4 months, she is counted as an inactive player. This threshold is selected based on experience, for e.g., an international travel or an internship might be roughly 3 months where a player might not be able to play during that period, but able to after. Inevitably, we have an imbalanced data set. We counted the number of active players and the number of inactive players in the exploratory data set and the result is shown in the following table:
 
 ```{r summary4, message = F, echo = F}
 par(mfrow=c(1,2))
@@ -393,7 +393,7 @@ In addition, longer game history, higher hero selection diversity, higher varian
 
 Finally, we found more kills, assists in the last week, more assists in the last month, and less game play frequency in the last month all indicate a higher possibility of game quitting.
 
-## Limination
+## Limitation
 
 Though we got a model that can predict the chance of players quitting the game fairly well, we are aware of the statistical inference and the causality problems that our current model might have. For example, the players we sampled using the Open DotA API might not be randomly sampled, and they can for sure not represent players of other online games. When it comes to the causality, we might also have reverse causality problem between the Number of Game variable and the possibility of quitting the game. A player might decide to stay in the game because she has played so many games. Or it is also possible that the decision to stay in the game causes a higher number of game played. 
 
